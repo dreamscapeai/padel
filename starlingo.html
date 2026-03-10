@@ -1,0 +1,1813 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>StarLingo — Space Translation Shooter</title>
+  <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;600;700;900&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --cyan: #00f5ff;
+      --cyan-dim: #007888;
+      --magenta: #ff00ff;
+      --purple: #8800ff;
+      --orange: #ff6600;
+      --yellow: #ffee00;
+      --bg-dark: #050510;
+      --bg-mid: #0a0a2e;
+    }
+
+    body {
+      background: var(--bg-dark);
+      color: var(--cyan);
+      font-family: 'Orbitron', monospace;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+    }
+
+    /* ─── SHARED COMPONENTS ─── */
+    .screen {
+      position: absolute;
+      inset: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    .screen.active { display: flex; }
+
+    .neon-title {
+      font-size: clamp(2rem, 5vw, 4rem);
+      font-weight: 900;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      color: #fff;
+      text-shadow: 0 0 10px var(--cyan), 0 0 30px var(--cyan), 0 0 60px var(--cyan);
+      animation: pulse-title 3s ease-in-out infinite;
+    }
+    @keyframes pulse-title {
+      0%, 100% { text-shadow: 0 0 10px var(--cyan), 0 0 30px var(--cyan), 0 0 60px var(--cyan); }
+      50%       { text-shadow: 0 0 20px var(--cyan), 0 0 50px var(--cyan), 0 0 100px var(--cyan), 0 0 150px var(--cyan); }
+    }
+
+    .neon-subtitle {
+      font-size: clamp(0.7rem, 1.5vw, 1rem);
+      letter-spacing: 0.4em;
+      color: var(--magenta);
+      text-shadow: 0 0 8px var(--magenta), 0 0 20px var(--magenta);
+      margin-top: 0.4em;
+    }
+
+    .panel {
+      background: linear-gradient(135deg, rgba(0,20,60,0.9), rgba(0,5,30,0.95));
+      border: 1px solid rgba(0, 245, 255, 0.3);
+      border-radius: 12px;
+      box-shadow: 0 0 20px rgba(0,245,255,0.15), inset 0 0 30px rgba(0,0,80,0.5);
+      padding: 2.5rem 3rem;
+      width: min(480px, 90vw);
+    }
+
+    label {
+      display: block;
+      font-size: 0.65rem;
+      letter-spacing: 0.25em;
+      color: var(--cyan-dim);
+      margin-bottom: 0.4rem;
+      text-transform: uppercase;
+    }
+
+    input[type="text"], select {
+      width: 100%;
+      background: rgba(0,10,40,0.8);
+      border: 1px solid rgba(0,245,255,0.4);
+      border-radius: 6px;
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      font-size: 1rem;
+      padding: 0.7rem 1rem;
+      outline: none;
+      transition: border-color 0.3s, box-shadow 0.3s;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    input[type="text"]:focus, select:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 12px rgba(0,245,255,0.4);
+    }
+    select option { background: #050520; }
+
+    .field-group { margin-bottom: 1.4rem; }
+
+    .btn {
+      display: inline-block;
+      background: transparent;
+      border: 2px solid var(--cyan);
+      border-radius: 8px;
+      color: var(--cyan);
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.9rem;
+      font-weight: 700;
+      letter-spacing: 0.2em;
+      padding: 0.8rem 2.5rem;
+      text-transform: uppercase;
+      transition: all 0.25s;
+      box-shadow: 0 0 10px rgba(0,245,255,0.3), inset 0 0 10px rgba(0,245,255,0.05);
+    }
+    .btn:hover {
+      background: rgba(0,245,255,0.12);
+      box-shadow: 0 0 25px rgba(0,245,255,0.6), inset 0 0 20px rgba(0,245,255,0.1);
+      transform: translateY(-2px);
+    }
+    .btn:active { transform: translateY(0); }
+    .btn.magenta {
+      border-color: var(--magenta);
+      color: var(--magenta);
+      box-shadow: 0 0 10px rgba(255,0,255,0.3), inset 0 0 10px rgba(255,0,255,0.05);
+    }
+    .btn.magenta:hover {
+      background: rgba(255,0,255,0.12);
+      box-shadow: 0 0 25px rgba(255,0,255,0.6), inset 0 0 20px rgba(255,0,255,0.1);
+    }
+
+    .btn-row { display: flex; gap: 1rem; justify-content: center; margin-top: 1.8rem; }
+
+    /* ─── START SCREEN ─── */
+    #start-screen { background: radial-gradient(ellipse at 50% 40%, #0a0a2e 0%, #050510 70%); z-index: 10; }
+    #start-canvas { position: absolute; inset: 0; z-index: 0; }
+    #start-panel { position: relative; z-index: 1; }
+
+    .start-logo {
+      text-align: center;
+      margin-bottom: 2.5rem;
+    }
+    .logo-icon {
+      font-size: 3rem;
+      display: block;
+      margin-bottom: 0.5rem;
+      filter: drop-shadow(0 0 20px var(--cyan));
+    }
+
+    /* Language card selector */
+    .lang-cards {
+      display: flex;
+      gap: 0.7rem;
+      margin-top: 0.5rem;
+    }
+    .lang-card {
+      flex: 1;
+      background: rgba(0,10,40,0.7);
+      border: 1px solid rgba(0,245,255,0.25);
+      border-radius: 8px;
+      cursor: pointer;
+      padding: 0.7rem 0.4rem;
+      text-align: center;
+      transition: all 0.25s;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.65rem;
+      letter-spacing: 0.1em;
+      color: rgba(0,245,255,0.7);
+    }
+    .lang-card .flag { font-size: 1.6rem; display: block; margin-bottom: 0.3rem; }
+    .lang-card:hover { border-color: var(--cyan); background: rgba(0,245,255,0.08); }
+    .lang-card.selected {
+      border-color: var(--cyan);
+      background: rgba(0,245,255,0.15);
+      box-shadow: 0 0 12px rgba(0,245,255,0.4);
+      color: #fff;
+    }
+
+    /* ─── GAME SCREEN ─── */
+    #game-screen { z-index: 5; }
+    #game-canvas { position: absolute; inset: 0; z-index: 0; }
+
+    /* HUD overlay */
+    #hud {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 2;
+    }
+
+    .hud-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      padding: 1rem 1.5rem;
+    }
+
+    .hud-panel {
+      background: rgba(0,5,20,0.75);
+      border: 1px solid rgba(0,245,255,0.25);
+      border-radius: 8px;
+      padding: 0.5rem 1rem;
+      min-width: 120px;
+      text-align: center;
+    }
+    .hud-label {
+      font-size: 0.55rem;
+      letter-spacing: 0.3em;
+      color: var(--cyan-dim);
+      display: block;
+    }
+    .hud-value {
+      font-size: 1.3rem;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 0 0 10px var(--cyan);
+    }
+    .hud-value.danger { color: #ff4444; text-shadow: 0 0 10px #ff4444; }
+
+    /* Timer arc */
+    #timer-panel {
+      position: relative;
+      padding: 0.5rem 1.2rem 0.5rem 1rem;
+    }
+
+    /* Combo display */
+    #combo-panel { min-width: 140px; }
+    .combo-bar-track {
+      height: 4px;
+      background: rgba(255,255,255,0.1);
+      border-radius: 2px;
+      margin-top: 0.4rem;
+      overflow: hidden;
+    }
+    .combo-bar-fill {
+      height: 100%;
+      border-radius: 2px;
+      background: linear-gradient(90deg, var(--cyan), var(--magenta));
+      box-shadow: 0 0 8px var(--cyan);
+      transition: width 0.3s;
+    }
+
+    /* Center word display */
+    #word-display {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      text-align: center;
+      pointer-events: none;
+      z-index: 3;
+    }
+    .word-label {
+      font-size: 0.65rem;
+      letter-spacing: 0.4em;
+      color: var(--cyan-dim);
+      margin-bottom: 0.5rem;
+      display: block;
+    }
+    .word-main {
+      font-size: clamp(2rem, 5vw, 3.5rem);
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 15px var(--cyan), 0 0 40px rgba(0,245,255,0.5);
+      letter-spacing: 0.05em;
+      display: block;
+      line-height: 1;
+    }
+    .word-lang-tag {
+      font-size: 0.6rem;
+      letter-spacing: 0.25em;
+      color: var(--magenta);
+      text-shadow: 0 0 8px var(--magenta);
+      margin-top: 0.4rem;
+      display: block;
+    }
+
+    /* Answer feedback */
+    #feedback {
+      position: absolute;
+      top: 38%;
+      left: 50%;
+      transform: translateX(-50%);
+      text-align: center;
+      z-index: 4;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s;
+    }
+    #feedback.show { opacity: 1; }
+    #feedback.correct .fb-main { color: #00ff88; text-shadow: 0 0 20px #00ff88; }
+    #feedback.wrong   .fb-main { color: #ff4444; text-shadow: 0 0 20px #ff4444; }
+    .fb-main {
+      font-size: 1.5rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+    }
+    .fb-sub {
+      font-size: 0.85rem;
+      color: rgba(255,255,255,0.8);
+      margin-top: 0.3rem;
+      letter-spacing: 0.15em;
+    }
+
+    /* Input area */
+    #input-area {
+      position: absolute;
+      bottom: 3.5rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+      width: min(500px, 90vw);
+      pointer-events: all;
+    }
+    .input-label {
+      font-size: 0.6rem;
+      letter-spacing: 0.35em;
+      color: var(--cyan-dim);
+      text-align: center;
+      display: block;
+      margin-bottom: 0.5rem;
+    }
+    .input-row {
+      display: flex;
+      gap: 0.6rem;
+    }
+    #answer-input {
+      flex: 1;
+      background: rgba(0,10,40,0.85);
+      border: 1px solid rgba(0,245,255,0.5);
+      border-radius: 8px;
+      color: #fff;
+      font-family: 'Orbitron', monospace;
+      font-size: 1.1rem;
+      padding: 0.75rem 1.1rem;
+      outline: none;
+      letter-spacing: 0.05em;
+      transition: border-color 0.2s, box-shadow 0.2s;
+      caret-color: var(--cyan);
+    }
+    #answer-input:focus {
+      border-color: var(--cyan);
+      box-shadow: 0 0 15px rgba(0,245,255,0.4);
+    }
+    #answer-input.shake {
+      animation: shake 0.35s ease-in-out;
+      border-color: #ff4444;
+      box-shadow: 0 0 15px rgba(255,68,68,0.5);
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      20%      { transform: translateX(-8px); }
+      40%      { transform: translateX(8px); }
+      60%      { transform: translateX(-6px); }
+      80%      { transform: translateX(6px); }
+    }
+    #submit-btn {
+      background: rgba(0,245,255,0.1);
+      border: 1px solid rgba(0,245,255,0.5);
+      border-radius: 8px;
+      color: var(--cyan);
+      cursor: pointer;
+      font-family: 'Orbitron', monospace;
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      padding: 0 1.2rem;
+      transition: all 0.2s;
+      pointer-events: all;
+    }
+    #submit-btn:hover {
+      background: rgba(0,245,255,0.2);
+      box-shadow: 0 0 12px rgba(0,245,255,0.5);
+    }
+
+    /* Streak badge */
+    #streak-badge {
+      position: absolute;
+      top: 50%;
+      right: 1.5rem;
+      transform: translateY(-50%);
+      text-align: center;
+      pointer-events: none;
+    }
+    .streak-label { font-size: 0.55rem; letter-spacing: 0.25em; color: var(--cyan-dim); display: block; }
+    .streak-num {
+      font-size: 2.5rem;
+      font-weight: 900;
+      color: var(--yellow);
+      text-shadow: 0 0 20px var(--yellow), 0 0 40px var(--orange);
+      display: block;
+      line-height: 1;
+      transition: transform 0.15s;
+    }
+    .streak-num.pop { transform: scale(1.4); }
+    .streak-x { font-size: 1rem; color: var(--orange); text-shadow: 0 0 10px var(--orange); }
+
+    /* Distance display bottom-left */
+    #dist-display {
+      position: absolute;
+      bottom: 1rem;
+      left: 1.5rem;
+      pointer-events: none;
+    }
+
+    /* Screen flash overlay */
+    #flash {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 5;
+      opacity: 0;
+    }
+    #flash.flash-correct {
+      background: rgba(0,255,136,0.15);
+      animation: flash-anim 0.4s ease-out;
+    }
+    #flash.flash-wrong {
+      background: rgba(255,68,68,0.2);
+      animation: flash-anim 0.4s ease-out;
+    }
+    @keyframes flash-anim {
+      0%   { opacity: 1; }
+      100% { opacity: 0; }
+    }
+
+    /* ─── END SCREEN ─── */
+    #end-screen { background: radial-gradient(ellipse at 50% 40%, #0a0a2e 0%, #050510 70%); z-index: 10; }
+    #end-canvas { position: absolute; inset: 0; z-index: 0; }
+
+    .end-content { position: relative; z-index: 1; text-align: center; }
+    .end-title {
+      font-size: clamp(1.2rem, 3vw, 2rem);
+      font-weight: 900;
+      color: var(--cyan);
+      letter-spacing: 0.2em;
+      text-shadow: 0 0 20px var(--cyan);
+      margin-bottom: 0.5rem;
+    }
+    .end-score-big {
+      font-size: clamp(3rem, 8vw, 6rem);
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 0 0 20px var(--yellow), 0 0 60px var(--orange);
+      display: block;
+      line-height: 1;
+      margin: 0.5rem 0 1.5rem;
+    }
+    .stat-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    .stat-box {
+      background: rgba(0,10,40,0.7);
+      border: 1px solid rgba(0,245,255,0.2);
+      border-radius: 8px;
+      padding: 1rem 0.5rem;
+      text-align: center;
+    }
+    .stat-box .sv { font-size: 1.8rem; font-weight: 700; color: #fff; text-shadow: 0 0 10px var(--cyan); display: block; }
+    .stat-box .sl { font-size: 0.55rem; letter-spacing: 0.2em; color: var(--cyan-dim); display: block; margin-top: 0.3rem; }
+
+    .rank-badge {
+      display: inline-block;
+      border: 2px solid var(--magenta);
+      border-radius: 20px;
+      padding: 0.3rem 1.5rem;
+      color: var(--magenta);
+      text-shadow: 0 0 10px var(--magenta);
+      box-shadow: 0 0 15px rgba(255,0,255,0.3);
+      font-size: 0.75rem;
+      letter-spacing: 0.2em;
+      margin-bottom: 1.5rem;
+    }
+
+    .player-name-display {
+      font-size: 0.8rem;
+      letter-spacing: 0.3em;
+      color: rgba(0,245,255,0.6);
+      margin-bottom: 1.5rem;
+    }
+
+    /* Scanline overlay */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background: repeating-linear-gradient(
+        0deg,
+        transparent,
+        transparent 2px,
+        rgba(0,0,0,0.03) 2px,
+        rgba(0,0,0,0.03) 4px
+      );
+      pointer-events: none;
+      z-index: 9999;
+    }
+
+    /* Transition overlay */
+    #transition-overlay {
+      position: fixed;
+      inset: 0;
+      background: #050510;
+      opacity: 0;
+      pointer-events: none;
+      z-index: 1000;
+      transition: opacity 0.4s;
+    }
+    #transition-overlay.fade-in  { opacity: 1; pointer-events: all; }
+    #transition-overlay.fade-out { opacity: 0; }
+  </style>
+</head>
+<body>
+
+<!-- TRANSITION OVERLAY -->
+<div id="transition-overlay"></div>
+
+<!-- ═══════════════════════════════════════════
+     START SCREEN
+═══════════════════════════════════════════ -->
+<div id="start-screen" class="screen active">
+  <canvas id="start-canvas"></canvas>
+
+  <div id="start-panel" class="panel">
+    <div class="start-logo">
+      <span class="logo-icon">🚀</span>
+      <h1 class="neon-title">StarLingo</h1>
+      <p class="neon-subtitle">Space Translation Shooter</p>
+    </div>
+
+    <div class="field-group">
+      <label for="player-name">Pilot Name</label>
+      <input type="text" id="player-name" placeholder="Enter your callsign…" maxlength="20" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="field-group">
+      <label>Target Language</label>
+      <div class="lang-cards">
+        <div class="lang-card selected" data-lang="spanish">
+          <span class="flag">🇪🇸</span>Spanish
+        </div>
+        <div class="lang-card" data-lang="french">
+          <span class="flag">🇫🇷</span>French
+        </div>
+        <div class="lang-card" data-lang="german">
+          <span class="flag">🇩🇪</span>German
+        </div>
+      </div>
+    </div>
+
+    <div class="field-group" style="margin-bottom:0">
+      <label>Level</label>
+      <select id="level-select">
+        <option value="beginner" selected>Beginner — 60 sec · 20 words</option>
+      </select>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn" id="launch-btn">Launch Mission</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     GAME SCREEN
+═══════════════════════════════════════════ -->
+<div id="game-screen" class="screen">
+  <canvas id="game-canvas"></canvas>
+  <div id="flash"></div>
+
+  <!-- HUD -->
+  <div id="hud">
+    <div class="hud-top">
+      <!-- Distance -->
+      <div class="hud-panel">
+        <span class="hud-label">Distance</span>
+        <span class="hud-value" id="hud-dist">0 <small style="font-size:0.6em">km</small></span>
+      </div>
+
+      <!-- Timer -->
+      <div class="hud-panel" id="timer-panel">
+        <span class="hud-label">Time</span>
+        <span class="hud-value" id="hud-timer">60</span>
+      </div>
+
+      <!-- Combo -->
+      <div class="hud-panel" id="combo-panel">
+        <span class="hud-label">Combo</span>
+        <span class="hud-value" id="hud-combo">×0</span>
+        <div class="combo-bar-track">
+          <div class="combo-bar-fill" id="combo-bar" style="width:0%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Streak badge right side -->
+    <div id="streak-badge">
+      <span class="streak-label">Streak</span>
+      <span class="streak-x">×</span>
+      <span class="streak-num" id="streak-num">0</span>
+    </div>
+  </div>
+
+  <!-- Word to translate -->
+  <div id="word-display">
+    <span class="word-label">Translate to <span id="target-lang-label">Spanish</span></span>
+    <span class="word-main" id="word-main">—</span>
+    <span class="word-lang-tag">English</span>
+  </div>
+
+  <!-- Feedback -->
+  <div id="feedback">
+    <div class="fb-main" id="fb-main-text"></div>
+    <div class="fb-sub"  id="fb-sub-text"></div>
+  </div>
+
+  <!-- Input -->
+  <div id="input-area">
+    <span class="input-label">Type translation → press Enter</span>
+    <div class="input-row">
+      <input type="text" id="answer-input" placeholder="Your answer…" autocomplete="off" spellcheck="false" autocorrect="off" autocapitalize="off">
+      <button id="submit-btn">FIRE ▶</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     END SCREEN
+═══════════════════════════════════════════ -->
+<div id="end-screen" class="screen">
+  <canvas id="end-canvas"></canvas>
+  <div class="end-content panel" style="width:min(540px,92vw)">
+    <div class="end-title">Mission Complete</div>
+    <div class="player-name-display" id="end-pilot-name">PILOT: —</div>
+    <span class="end-score-big" id="end-score">0</span>
+    <div class="rank-badge" id="end-rank">— CADET —</div>
+    <div class="stat-grid">
+      <div class="stat-box">
+        <span class="sv" id="end-dist">0</span>
+        <span class="sl">km traveled</span>
+      </div>
+      <div class="stat-box">
+        <span class="sv" id="end-correct">0</span>
+        <span class="sl">correct words</span>
+      </div>
+      <div class="stat-box">
+        <span class="sv" id="end-combo">0</span>
+        <span class="sl">best streak</span>
+      </div>
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="replay-btn">Replay</button>
+      <button class="btn magenta" id="menu-btn">Menu</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     GAME SCRIPT
+═══════════════════════════════════════════ -->
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────
+// VOCABULARY
+// ─────────────────────────────────────────────
+const VOCAB = {
+  spanish: [
+    { word:'dog',    tr:'perro'   },{ word:'cat',    tr:'gato'    },
+    { word:'house',  tr:'casa'    },{ word:'water',  tr:'agua'    },
+    { word:'bread',  tr:'pan'     },{ word:'milk',   tr:'leche'   },
+    { word:'sun',    tr:'sol'     },{ word:'car',    tr:'coche'   },
+    { word:'book',   tr:'libro'   },{ word:'school', tr:'escuela' },
+    { word:'friend', tr:'amigo'   },{ word:'mother', tr:'madre'   },
+    { word:'father', tr:'padre'   },{ word:'food',   tr:'comida'  },
+    { word:'street', tr:'calle'   },{ word:'city',   tr:'ciudad'  },
+    { word:'table',  tr:'mesa'    },{ word:'door',   tr:'puerta'  },
+    { word:'window', tr:'ventana' },{ word:'day',    tr:'dia'     },
+  ],
+  french: [
+    { word:'dog',    tr:'chien'     },{ word:'cat',    tr:'chat'      },
+    { word:'house',  tr:'maison'    },{ word:'water',  tr:'eau'       },
+    { word:'bread',  tr:'pain'      },{ word:'milk',   tr:'lait'      },
+    { word:'sun',    tr:'soleil'    },{ word:'car',    tr:'voiture'   },
+    { word:'book',   tr:'livre'     },{ word:'school', tr:'ecole'     },
+    { word:'friend', tr:'ami'       },{ word:'mother', tr:'mere'      },
+    { word:'father', tr:'pere'      },{ word:'food',   tr:'nourriture'},
+    { word:'street', tr:'rue'       },{ word:'city',   tr:'ville'     },
+    { word:'table',  tr:'table'     },{ word:'door',   tr:'porte'     },
+    { word:'window', tr:'fenetre'   },{ word:'day',    tr:'jour'      },
+  ],
+  german: [
+    { word:'dog',    tr:'hund'    },{ word:'cat',    tr:'katze'   },
+    { word:'house',  tr:'haus'    },{ word:'water',  tr:'wasser'  },
+    { word:'bread',  tr:'brot'    },{ word:'milk',   tr:'milch'   },
+    { word:'sun',    tr:'sonne'   },{ word:'car',    tr:'auto'    },
+    { word:'book',   tr:'buch'    },{ word:'school', tr:'schule'  },
+    { word:'friend', tr:'freund'  },{ word:'mother', tr:'mutter'  },
+    { word:'father', tr:'vater'   },{ word:'food',   tr:'essen'   },
+    { word:'street', tr:'strasse' },{ word:'city',   tr:'stadt'   },
+    { word:'table',  tr:'tisch'   },{ word:'door',   tr:'tur'     },
+    { word:'window', tr:'fenster' },{ word:'day',    tr:'tag'     },
+  ],
+};
+
+const LANG_NAMES = { spanish:'Spanish', french:'French', german:'German' };
+const GAME_DURATION = 60; // seconds
+const MAX_COMBO_FOR_BAR = 10;
+
+// ─────────────────────────────────────────────
+// UTILS
+// ─────────────────────────────────────────────
+function normalize(s) {
+  return s.trim().toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/ß/g, 'ss');
+}
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function randInt(lo, hi) { return Math.floor(rand(lo, hi + 1)); }
+
+// ─────────────────────────────────────────────
+// ASTEROID SHAPE CACHE
+// ─────────────────────────────────────────────
+function makeAsteroidVerts(n, r) {
+  const verts = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2;
+    const radius = r * rand(0.65, 1.0);
+    verts.push({ angle, radius });
+  }
+  return verts;
+}
+
+// ─────────────────────────────────────────────
+// PARTICLE SYSTEM
+// ─────────────────────────────────────────────
+class Particle {
+  constructor(x, y, vx, vy, color, size, life) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.color = color;
+    this.size = size;
+    this.life = life;
+    this.maxLife = life;
+  }
+  update(dt) {
+    this.x  += this.vx * dt;
+    this.y  += this.vy * dt;
+    this.vx *= (1 - 2 * dt);
+    this.vy *= (1 - 2 * dt);
+    this.life -= dt;
+  }
+  draw(ctx) {
+    const alpha = Math.max(0, this.life / this.maxLife);
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = this.color;
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size * alpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─────────────────────────────────────────────
+// MAIN GAME ENGINE
+// ─────────────────────────────────────────────
+class StarLingoGame {
+  constructor() {
+    // DOM
+    this.startScreen = document.getElementById('start-screen');
+    this.gameScreen  = document.getElementById('game-screen');
+    this.endScreen   = document.getElementById('end-screen');
+    this.overlay     = document.getElementById('transition-overlay');
+
+    this.startCanvas = document.getElementById('start-canvas');
+    this.gameCanvas  = document.getElementById('game-canvas');
+    this.endCanvas   = document.getElementById('end-canvas');
+
+    this.gCtx = this.gameCanvas.getContext('2d');
+    this.sCtx = this.startCanvas.getContext('2d');
+    this.eCtx = this.endCanvas.getContext('2d');
+
+    // UI refs
+    this.playerNameInput = document.getElementById('player-name');
+    this.langCards = document.querySelectorAll('.lang-card');
+    this.launchBtn = document.getElementById('launch-btn');
+    this.answerInput = document.getElementById('answer-input');
+    this.submitBtn = document.getElementById('submit-btn');
+    this.replayBtn = document.getElementById('replay-btn');
+    this.menuBtn   = document.getElementById('menu-btn');
+
+    this.hudDist    = document.getElementById('hud-dist');
+    this.hudTimer   = document.getElementById('hud-timer');
+    this.hudCombo   = document.getElementById('hud-combo');
+    this.comboBar   = document.getElementById('combo-bar');
+    this.streakNum  = document.getElementById('streak-num');
+    this.wordMain   = document.getElementById('word-main');
+    this.targetLangLabel = document.getElementById('target-lang-label');
+    this.feedbackEl = document.getElementById('feedback');
+    this.fbMain     = document.getElementById('fb-main-text');
+    this.fbSub      = document.getElementById('fb-sub-text');
+    this.flashEl    = document.getElementById('flash');
+
+    this.endPilot   = document.getElementById('end-pilot-name');
+    this.endScore   = document.getElementById('end-score');
+    this.endRank    = document.getElementById('end-rank');
+    this.endDist    = document.getElementById('end-dist');
+    this.endCorrect = document.getElementById('end-correct');
+    this.endCombo   = document.getElementById('end-combo');
+
+    // State
+    this.selectedLang = 'spanish';
+    this.playerName   = '';
+    this.gameRunning  = false;
+
+    // Game vars
+    this.speed        = 2;
+    this.baseSpeed    = 2;
+    this.distance     = 0;
+    this.combo        = 0;
+    this.maxCombo     = 0;
+    this.correctCount = 0;
+    this.timeLeft     = GAME_DURATION;
+    this.wrongMode    = false;
+    this.boostTimer   = 0;
+    this.slowTimer    = 0;
+
+    // Entities
+    this.bgStars   = [];
+    this.midStars  = [];
+    this.fgStars   = [];
+    this.planets   = [];
+    this.nebulae   = [];
+    this.asteroid  = null;
+    this.lasers    = [];
+    this.particles = [];
+    this.rocketTrail = [];
+    this.explosionRings = [];
+
+    // Words
+    this.words    = [];
+    this.wordIdx  = 0;
+    this.currWord = null;
+
+    // Rocket
+    this.rocketX  = 0;
+    this.rocketY  = 0;
+    this.rocketShakeX = 0;
+    this.rocketShakeY = 0;
+    this.enginePulse  = 0;
+
+    // Timing
+    this.lastTime    = 0;
+    this.timerAcc    = 0;
+    this.animId      = null;
+    this.bgAnimId    = null;
+
+    // Canvas dims
+    this.W = 0;
+    this.H = 0;
+
+    this.initUI();
+    this.loadLocalStorage();
+    this.resizeAll();
+    window.addEventListener('resize', () => this.resizeAll());
+    this.runStartBackground();
+  }
+
+  // ── LOCAL STORAGE ──
+  loadLocalStorage() {
+    const saved = JSON.parse(localStorage.getItem('starlingo_player') || '{}');
+    if (saved.name)  this.playerNameInput.value = saved.name;
+    if (saved.lang)  this.selectLang(saved.lang);
+  }
+  saveLocalStorage() {
+    localStorage.setItem('starlingo_player', JSON.stringify({
+      name: this.playerName,
+      lang: this.selectedLang,
+    }));
+  }
+
+  // ── UI INIT ──
+  initUI() {
+    // Lang cards
+    this.langCards.forEach(card => {
+      card.addEventListener('click', () => this.selectLang(card.dataset.lang));
+    });
+
+    this.launchBtn.addEventListener('click', () => this.startGame());
+    this.playerNameInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') this.startGame();
+    });
+
+    this.answerInput.addEventListener('keydown', e => {
+      if (e.key === 'Enter') this.submitAnswer();
+    });
+    this.submitBtn.addEventListener('click', () => this.submitAnswer());
+
+    this.replayBtn.addEventListener('click', () => this.replayGame());
+    this.menuBtn.addEventListener('click',   () => this.goToMenu());
+  }
+
+  selectLang(lang) {
+    if (!VOCAB[lang]) return;
+    this.selectedLang = lang;
+    this.langCards.forEach(c => c.classList.toggle('selected', c.dataset.lang === lang));
+  }
+
+  // ── RESIZE ──
+  resizeAll() {
+    [this.startCanvas, this.gameCanvas, this.endCanvas].forEach(c => {
+      c.width  = window.innerWidth;
+      c.height = window.innerHeight;
+    });
+    this.W = window.innerWidth;
+    this.H = window.innerHeight;
+    this.rocketX = Math.floor(this.W * 0.22);
+    this.rocketY = Math.floor(this.H * 0.5);
+    this.initStars();
+    this.initPlanets();
+    this.initNebulae();
+  }
+
+  // ── STARS ──
+  initStars() {
+    const make = (count, speedMul, minSize, maxSize, alpha) =>
+      Array.from({ length: count }, () => ({
+        x: rand(0, this.W),
+        y: rand(0, this.H),
+        r: rand(minSize, maxSize),
+        speedMul,
+        alpha: rand(alpha * 0.5, alpha),
+        twinkle: rand(0, Math.PI * 2),
+        twinkleSpeed: rand(0.5, 2),
+      }));
+
+    this.bgStars  = make(120, 0.3, 0.3, 0.8, 0.5);
+    this.midStars = make(70,  0.7, 0.5, 1.2, 0.7);
+    this.fgStars  = make(30,  1.5, 1.0, 2.5, 1.0);
+  }
+
+  updateStars(dt, speedOverride) {
+    const sp = speedOverride !== undefined ? speedOverride : this.speed;
+    const all = [...this.bgStars, ...this.midStars, ...this.fgStars];
+    all.forEach(s => {
+      s.x -= sp * s.speedMul * 60 * dt;
+      if (s.x < -4) { s.x = this.W + 4; s.y = rand(0, this.H); }
+      s.twinkle += s.twinkleSpeed * dt;
+    });
+  }
+
+  drawStars(ctx, sp) {
+    const all = [
+      { stars: this.bgStars,  color: '#aaddff' },
+      { stars: this.midStars, color: '#cceeFF' },
+      { stars: this.fgStars,  color: '#ffffff' },
+    ];
+    all.forEach(({ stars, color }) => {
+      stars.forEach(s => {
+        const twinkleAlpha = s.alpha * (0.7 + 0.3 * Math.sin(s.twinkle));
+        ctx.save();
+        ctx.globalAlpha = twinkleAlpha;
+        // Streak lines at high speed
+        if (sp > 3.5 && s.speedMul > 0.5) {
+          const len = sp * s.speedMul * 8;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = s.r * 0.8;
+          ctx.shadowBlur = 3;
+          ctx.shadowColor = color;
+          ctx.beginPath();
+          ctx.moveTo(s.x, s.y);
+          ctx.lineTo(s.x + len, s.y);
+          ctx.stroke();
+        } else {
+          ctx.fillStyle = color;
+          ctx.shadowBlur = s.r > 1.5 ? 4 : 0;
+          ctx.shadowColor = color;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      });
+    });
+  }
+
+  // ── NEBULAE ──
+  initNebulae() {
+    this.nebulae = Array.from({ length: 4 }, (_, i) => ({
+      x: rand(0, this.W),
+      y: rand(0, this.H),
+      rx: rand(200, 400),
+      ry: rand(100, 250),
+      hue: [200, 270, 180, 310][i],
+      alpha: rand(0.04, 0.1),
+      speed: rand(0.05, 0.15),
+    }));
+  }
+
+  drawNebulae(ctx) {
+    this.nebulae.forEach(n => {
+      const grd = ctx.createRadialGradient(n.x, n.y, 0, n.x, n.y, n.rx);
+      grd.addColorStop(0, `hsla(${n.hue},100%,60%,${n.alpha})`);
+      grd.addColorStop(1, 'transparent');
+      ctx.save();
+      ctx.scale(1, n.ry / n.rx);
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.arc(n.x, n.y * (n.rx / n.ry), n.rx, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  updateNebulae(dt) {
+    this.nebulae.forEach(n => {
+      n.x -= n.speed * 60 * dt;
+      if (n.x + n.rx < 0) { n.x = this.W + n.rx; n.y = rand(0, this.H); }
+    });
+  }
+
+  // ── PLANETS ──
+  initPlanets() {
+    const configs = [
+      { r: 80,  hue: 200, sat: 80, lit: 40 },
+      { r: 120, hue: 270, sat: 70, lit: 35 },
+      { r: 55,  hue: 30,  sat: 90, lit: 50 },
+    ];
+    this.planets = configs.map((c, i) => ({
+      x: rand(this.W * 0.3, this.W),
+      y: rand(50, this.H - 50),
+      r: c.r,
+      hue: c.hue, sat: c.sat, lit: c.lit,
+      speed: rand(0.02, 0.06),
+      rings: Math.random() > 0.6,
+      ringAngle: rand(0.2, 0.5),
+      phase: (i / 3) * this.W,
+    }));
+  }
+
+  drawPlanets(ctx) {
+    this.planets.forEach(p => {
+      // Glow
+      ctx.save();
+      ctx.shadowBlur = 40;
+      ctx.shadowColor = `hsl(${p.hue},${p.sat}%,${p.lit + 20}%)`;
+      const grd = ctx.createRadialGradient(p.x - p.r * 0.3, p.y - p.r * 0.3, p.r * 0.1, p.x, p.y, p.r);
+      grd.addColorStop(0, `hsl(${p.hue},${p.sat}%,${p.lit + 25}%)`);
+      grd.addColorStop(0.6, `hsl(${p.hue},${p.sat}%,${p.lit}%)`);
+      grd.addColorStop(1, `hsl(${p.hue},${p.sat}%,${p.lit - 15}%)`);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+      ctx.fillStyle = grd;
+      ctx.fill();
+      ctx.restore();
+
+      // Rings
+      if (p.rings) {
+        ctx.save();
+        ctx.translate(p.x, p.y);
+        ctx.scale(1, p.ringAngle);
+        ctx.strokeStyle = `hsla(${p.hue},60%,70%,0.5)`;
+        ctx.lineWidth = 6;
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = `hsl(${p.hue},80%,70%)`;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 1.6, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.strokeStyle = `hsla(${p.hue},60%,70%,0.25)`;
+        ctx.lineWidth = 14;
+        ctx.beginPath();
+        ctx.arc(0, 0, p.r * 1.9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Atmosphere edge
+      ctx.save();
+      const atm = ctx.createRadialGradient(p.x, p.y, p.r * 0.9, p.x, p.y, p.r * 1.3);
+      atm.addColorStop(0, `hsla(${p.hue},80%,70%,0.2)`);
+      atm.addColorStop(1, 'transparent');
+      ctx.fillStyle = atm;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, p.r * 1.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  updatePlanets(dt) {
+    this.planets.forEach(p => {
+      p.x -= p.speed * 60 * dt;
+      if (p.x + p.r * 2 < 0) {
+        p.x = this.W + p.r;
+        p.y = rand(50, this.H - 50);
+      }
+    });
+  }
+
+  // ── ROCKET ──
+  drawRocket(ctx, x, y, speed, boosting) {
+    const scale = 1 + (boosting ? 0.1 * Math.sin(this.enginePulse * 5) : 0);
+    ctx.save();
+    ctx.translate(x + this.rocketShakeX, y + this.rocketShakeY);
+    ctx.scale(scale, scale);
+
+    // Trail / boost exhaust
+    if (boosting || speed > this.baseSpeed + 0.5) {
+      const trailLen = 40 + (speed - this.baseSpeed) * 20;
+      const grd = ctx.createLinearGradient(-trailLen - 30, 0, -30, 0);
+      grd.addColorStop(0, 'transparent');
+      grd.addColorStop(0.5, `rgba(0,180,255,${Math.min(0.6, (speed - this.baseSpeed) * 0.1)})`);
+      grd.addColorStop(1, 'rgba(0,245,255,0.4)');
+      ctx.fillStyle = grd;
+      ctx.beginPath();
+      ctx.moveTo(-30, -6);
+      ctx.lineTo(-30 - trailLen, -1);
+      ctx.lineTo(-30 - trailLen, 1);
+      ctx.lineTo(-30, 6);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Engine exhaust glow
+    const exhaustSize = 18 + 10 * Math.sin(this.enginePulse * 8) + (boosting ? 15 : 0);
+    const exGrd = ctx.createRadialGradient(-28, 0, 0, -28, 0, exhaustSize);
+    exGrd.addColorStop(0, 'rgba(100,200,255,0.9)');
+    exGrd.addColorStop(0.3, 'rgba(0,100,255,0.5)');
+    exGrd.addColorStop(1, 'transparent');
+    ctx.fillStyle = exGrd;
+    ctx.beginPath();
+    ctx.arc(-28, 0, exhaustSize, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Wing lower
+    ctx.fillStyle = '#0066cc';
+    ctx.beginPath();
+    ctx.moveTo(-8, 10);
+    ctx.lineTo(-22, 28);
+    ctx.lineTo(-26, 10);
+    ctx.closePath();
+    ctx.fill();
+
+    // Wing upper
+    ctx.beginPath();
+    ctx.moveTo(-8, -10);
+    ctx.lineTo(-22, -28);
+    ctx.lineTo(-26, -10);
+    ctx.closePath();
+    ctx.fill();
+
+    // Wing accent
+    ctx.strokeStyle = '#00aaff';
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 6;
+    ctx.shadowColor = '#00f5ff';
+    ctx.beginPath();
+    ctx.moveTo(-8, -10); ctx.lineTo(-22, -28); ctx.lineTo(-26, -10);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(-8, 10); ctx.lineTo(-22, 28); ctx.lineTo(-26, 10);
+    ctx.stroke();
+
+    // Main fuselage
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = '#00f5ff';
+    const bodyGrd = ctx.createLinearGradient(0, -10, 0, 10);
+    bodyGrd.addColorStop(0, '#88ddff');
+    bodyGrd.addColorStop(0.5, '#00aaff');
+    bodyGrd.addColorStop(1, '#004488');
+    ctx.fillStyle = bodyGrd;
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(18, -8);
+    ctx.lineTo(-10, -9);
+    ctx.lineTo(-26, -7);
+    ctx.lineTo(-28, 0);
+    ctx.lineTo(-26, 7);
+    ctx.lineTo(-10, 9);
+    ctx.lineTo(18, 8);
+    ctx.closePath();
+    ctx.fill();
+
+    // Fuselage outline
+    ctx.strokeStyle = '#00f5ff';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Nose cone
+    ctx.fillStyle = '#cceeff';
+    ctx.beginPath();
+    ctx.moveTo(30, 0);
+    ctx.lineTo(18, -5);
+    ctx.lineTo(18, 5);
+    ctx.closePath();
+    ctx.fill();
+
+    // Cockpit window
+    const cockpitGrd = ctx.createRadialGradient(12, -2, 0, 12, -2, 9);
+    cockpitGrd.addColorStop(0, 'rgba(200,240,255,0.9)');
+    cockpitGrd.addColorStop(0.6, 'rgba(0,150,255,0.6)');
+    cockpitGrd.addColorStop(1, 'rgba(0,50,150,0.4)');
+    ctx.fillStyle = cockpitGrd;
+    ctx.shadowBlur = 8;
+    ctx.shadowColor = '#88eeff';
+    ctx.beginPath();
+    ctx.ellipse(10, 0, 9, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Engine nozzles
+    ctx.fillStyle = '#003366';
+    ctx.shadowBlur = 0;
+    [[-7, -8], [-7, 6]].forEach(([ox, oy]) => {
+      ctx.beginPath();
+      ctx.rect(-26 + ox, oy - 2.5, 6, 5);
+      ctx.fill();
+    });
+
+    ctx.restore();
+  }
+
+  // ── ASTEROID / TARGET ──
+  spawnAsteroid() {
+    const r = rand(45, 70);
+    const verts = makeAsteroidVerts(12, r);
+    this.asteroid = {
+      x: this.W + r + 20,
+      y: rand(this.H * 0.2, this.H * 0.75),
+      r, verts,
+      angle: 0,
+      rotSpeed: rand(-0.4, 0.4),
+      hue: rand(20, 40),
+      driftY: rand(-0.3, 0.3),
+      glowPulse: 0,
+    };
+  }
+
+  updateAsteroid(dt) {
+    if (!this.asteroid) return;
+    const a = this.asteroid;
+    a.angle += a.rotSpeed * dt;
+    a.glowPulse += dt * 2;
+    const drift = this.wrongMode ? 0.3 : this.speed * 0.5;
+    a.x -= drift * 60 * dt;
+    a.y += a.driftY * 60 * dt;
+    a.y = Math.max(80, Math.min(this.H - 80, a.y));
+    // Never let it scroll off left
+    if (a.x < -a.r - 10) a.x = -a.r - 10;
+  }
+
+  drawAsteroid(ctx, label) {
+    if (!this.asteroid) return;
+    const a = this.asteroid;
+    ctx.save();
+    ctx.translate(a.x, a.y);
+    ctx.rotate(a.angle);
+
+    const glow = 15 + 8 * Math.sin(a.glowPulse);
+    ctx.shadowBlur = glow;
+    ctx.shadowColor = this.wrongMode ? '#ff4444' : '#ff9900';
+
+    // Surface
+    ctx.beginPath();
+    a.verts.forEach((v, i) => {
+      const px = Math.cos(v.angle) * v.radius;
+      const py = Math.sin(v.angle) * v.radius;
+      i === 0 ? ctx.moveTo(px, py) : ctx.lineTo(px, py);
+    });
+    ctx.closePath();
+
+    const grd = ctx.createRadialGradient(0, 0, 0, 0, 0, a.r);
+    grd.addColorStop(0, `hsl(${a.hue},60%,40%)`);
+    grd.addColorStop(0.7, `hsl(${a.hue},50%,20%)`);
+    grd.addColorStop(1, `hsl(${a.hue},40%,10%)`);
+    ctx.fillStyle = grd;
+    ctx.fill();
+
+    ctx.strokeStyle = this.wrongMode ? '#ff4444' : '#ff9900';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    // Target reticle
+    ctx.shadowBlur = 0;
+    ctx.strokeStyle = this.wrongMode
+      ? 'rgba(255,68,68,0.5)'
+      : 'rgba(255,200,0,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.arc(0, 0, a.r + 12, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Cross
+    const cs = a.r + 18;
+    ctx.beginPath();
+    ctx.moveTo(-cs, 0); ctx.lineTo(-a.r - 4, 0);
+    ctx.moveTo( cs, 0); ctx.lineTo( a.r + 4, 0);
+    ctx.moveTo(0, -cs); ctx.lineTo(0, -a.r - 4);
+    ctx.moveTo(0,  cs); ctx.lineTo(0,  a.r + 4);
+    ctx.stroke();
+
+    ctx.restore();
+
+    // Word label above
+    ctx.save();
+    ctx.shadowBlur = 12;
+    ctx.shadowColor = this.wrongMode ? '#ff6666' : '#ffcc00';
+    ctx.fillStyle = this.wrongMode ? '#ff8888' : '#fff';
+    ctx.font = `bold ${Math.max(13, Math.min(18, a.r * 0.4))}px Orbitron`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(label, a.x, a.y - a.r - 16);
+    ctx.restore();
+  }
+
+  // ── LASERS ──
+  fireLaser(tx, ty) {
+    this.lasers.push({
+      x1: this.rocketX + 30,
+      y1: this.rocketY,
+      x2: tx, y2: ty,
+      life: 1,
+      color: '#ff2200',
+    });
+    // Secondary
+    this.lasers.push({
+      x1: this.rocketX + 30,
+      y1: this.rocketY - 6,
+      x2: tx, y2: ty,
+      life: 0.7,
+      color: '#ffaa00',
+    });
+  }
+
+  updateLasers(dt) {
+    this.lasers = this.lasers.filter(l => l.life > 0);
+    this.lasers.forEach(l => l.life -= dt * 6);
+  }
+
+  drawLasers(ctx) {
+    this.lasers.forEach(l => {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, l.life);
+      ctx.strokeStyle = l.color;
+      ctx.lineWidth = 3 * l.life;
+      ctx.shadowBlur = 20;
+      ctx.shadowColor = l.color;
+      ctx.beginPath();
+      ctx.moveTo(l.x1, l.y1);
+      ctx.lineTo(l.x2, l.y2);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  // ── EXPLOSION ──
+  explodeAt(x, y, combo) {
+    const colors = ['#ff6600','#ffcc00','#ff3300','#ff9900','#ffffff','#ff4488'];
+    const count = Math.min(80, 30 + combo * 5);
+    for (let i = 0; i < count; i++) {
+      const angle = rand(0, Math.PI * 2);
+      const spd   = rand(40, 150 + combo * 20);
+      const color = colors[Math.floor(Math.random() * colors.length)];
+      this.particles.push(new Particle(
+        x + rand(-10,10), y + rand(-10,10),
+        Math.cos(angle) * spd, Math.sin(angle) * spd,
+        color, rand(2, 5 + combo * 0.5), rand(0.6, 1.2)
+      ));
+    }
+    // Shockwave ring
+    this.explosionRings.push({ x, y, r: 5, maxR: 80 + combo * 10, life: 1 });
+    // Sparks outward
+    for (let i = 0; i < 12; i++) {
+      const angle = (i / 12) * Math.PI * 2;
+      this.particles.push(new Particle(
+        x, y,
+        Math.cos(angle) * 200, Math.sin(angle) * 200,
+        '#ffffff', 1.5, 0.5
+      ));
+    }
+  }
+
+  updateParticles(dt) {
+    this.particles = this.particles.filter(p => p.life > 0);
+    this.particles.forEach(p => p.update(dt));
+    this.explosionRings = this.explosionRings.filter(r => r.life > 0);
+    this.explosionRings.forEach(r => {
+      r.r += 300 * dt;
+      r.life -= dt * 2.5;
+    });
+  }
+
+  drawParticles(ctx) {
+    this.particles.forEach(p => p.draw(ctx));
+    this.explosionRings.forEach(r => {
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, r.life * 0.6);
+      ctx.strokeStyle = '#ff6600';
+      ctx.lineWidth = 2;
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = '#ff6600';
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, r.r, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.restore();
+    });
+  }
+
+  // ── ENGINE TRAIL ──
+  updateTrail() {
+    if (this.gameRunning) {
+      this.rocketTrail.unshift({ x: this.rocketX, y: this.rocketY });
+      if (this.rocketTrail.length > 25) this.rocketTrail.pop();
+    }
+  }
+
+  drawTrail(ctx) {
+    if (this.speed <= this.baseSpeed + 0.3) return;
+    const boost = Math.min(1, (this.speed - this.baseSpeed) / 3);
+    for (let i = 1; i < this.rocketTrail.length; i++) {
+      const t = this.rocketTrail[i];
+      const alpha = (1 - i / this.rocketTrail.length) * boost * 0.5;
+      const r = (1 - i / this.rocketTrail.length) * 4 * boost;
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#00ccff';
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = '#00f5ff';
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, r, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ── GRID / NEON GRID ENVIRONMENT ──
+  drawGrid(ctx) {
+    if (this.speed < 3) return;
+    const alpha = Math.min(0.15, (this.speed - 3) * 0.05);
+    const gridSize = 80;
+    const offsetX = (performance.now() * 0.02 * this.speed) % gridSize;
+    ctx.save();
+    ctx.globalAlpha = alpha;
+    ctx.strokeStyle = '#0044ff';
+    ctx.lineWidth = 0.5;
+    for (let x = -offsetX; x < this.W + gridSize; x += gridSize) {
+      ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, this.H); ctx.stroke();
+    }
+    for (let y = 0; y < this.H; y += gridSize) {
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(this.W, y); ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  // ── BACKGROUND ──
+  drawBackground(ctx) {
+    ctx.fillStyle = '#050510';
+    ctx.fillRect(0, 0, this.W, this.H);
+    this.drawGrid(ctx);
+    this.drawNebulae(ctx);
+    this.drawPlanets(ctx);
+    this.drawStars(ctx, this.speed);
+  }
+
+  // ── GAME LOGIC ──
+  loadNextWord() {
+    if (this.wordIdx >= this.words.length) {
+      this.words = shuffle(VOCAB[this.selectedLang]);
+      this.wordIdx = 0;
+    }
+    this.currWord = this.words[this.wordIdx++];
+    this.wordMain.textContent = this.currWord.word.toUpperCase();
+    this.wrongMode = false;
+    this.spawnAsteroid();
+    this.answerInput.value = '';
+    this.answerInput.focus();
+    this.hideFeedback();
+  }
+
+  submitAnswer() {
+    if (!this.gameRunning || !this.currWord) return;
+    const raw = this.answerInput.value;
+    const userNorm   = normalize(raw);
+    const correctNorm = normalize(this.currWord.tr);
+
+    if (userNorm === correctNorm) {
+      this.onCorrect();
+    } else {
+      this.onWrong();
+    }
+  }
+
+  onCorrect() {
+    const a = this.asteroid;
+    if (a) {
+      this.fireLaser(a.x, a.y);
+      this.explodeAt(a.x, a.y, this.combo);
+      this.asteroid = null;
+    }
+    this.combo++;
+    if (this.combo > this.maxCombo) this.maxCombo = this.combo;
+    this.correctCount++;
+
+    // Speed boost
+    const boost = 0.6 + this.combo * 0.15;
+    this.speed = Math.min(6, this.speed + boost);
+    this.boostTimer = 1.5;
+
+    // Shake (positive subtle)
+    this.rocketShakeX = 2;
+    setTimeout(() => { this.rocketShakeX = 0; }, 120);
+
+    this.flashScreen('correct');
+    this.showFeedback('correct', `+${this.combo > 1 ? '×' + this.combo + ' COMBO' : 'CORRECT'}`, '');
+    this.updateComboHUD();
+    this.animStreakPop();
+
+    setTimeout(() => this.loadNextWord(), 350);
+  }
+
+  onWrong() {
+    this.combo = 0;
+    this.wrongMode = true;
+    this.speed = Math.max(0.8, this.speed * 0.6);
+    this.slowTimer = 1.5;
+
+    // Shake
+    this.rocketShakeX = rand(-5, 5);
+    this.rocketShakeY = rand(-3, 3);
+    setTimeout(() => { this.rocketShakeX = 0; this.rocketShakeY = 0; }, 350);
+
+    this.answerInput.classList.add('shake');
+    setTimeout(() => this.answerInput.classList.remove('shake'), 380);
+
+    this.flashScreen('wrong');
+    this.showFeedback('wrong', '✕ WRONG!', `Correct: ${this.currWord.tr.toUpperCase()}`);
+    this.updateComboHUD();
+    this.answerInput.value = '';
+    this.answerInput.focus();
+  }
+
+  showFeedback(type, main, sub) {
+    this.feedbackEl.className = `show ${type}`;
+    this.fbMain.textContent = main;
+    this.fbSub.textContent  = sub;
+    if (type === 'correct') {
+      clearTimeout(this._fbTimeout);
+      this._fbTimeout = setTimeout(() => this.hideFeedback(), 700);
+    }
+  }
+
+  hideFeedback() {
+    this.feedbackEl.className = '';
+  }
+
+  flashScreen(type) {
+    this.flashEl.className = '';
+    void this.flashEl.offsetWidth;
+    this.flashEl.className = `flash-${type}`;
+  }
+
+  animStreakPop() {
+    this.streakNum.classList.remove('pop');
+    void this.streakNum.offsetWidth;
+    this.streakNum.classList.add('pop');
+    setTimeout(() => this.streakNum.classList.remove('pop'), 200);
+  }
+
+  updateComboHUD() {
+    this.hudCombo.textContent = `×${this.combo}`;
+    this.streakNum.textContent = this.combo;
+    const barW = Math.min(100, (this.combo / MAX_COMBO_FOR_BAR) * 100);
+    this.comboBar.style.width = barW + '%';
+  }
+
+  // ── GAME LOOP ──
+  startGame() {
+    const name = this.playerNameInput.value.trim();
+    if (!name) {
+      this.playerNameInput.focus();
+      this.playerNameInput.style.borderColor = '#ff4444';
+      setTimeout(() => { this.playerNameInput.style.borderColor = ''; }, 1500);
+      return;
+    }
+    this.playerName = name;
+    this.saveLocalStorage();
+
+    // Reset state
+    this.speed        = this.baseSpeed;
+    this.distance     = 0;
+    this.combo        = 0;
+    this.maxCombo     = 0;
+    this.correctCount = 0;
+    this.timeLeft     = GAME_DURATION;
+    this.timerAcc     = 0;
+    this.wordIdx      = 0;
+    this.words        = shuffle(VOCAB[this.selectedLang]);
+    this.asteroid     = null;
+    this.lasers       = [];
+    this.particles    = [];
+    this.rocketTrail  = [];
+    this.explosionRings = [];
+    this.boostTimer   = 0;
+    this.slowTimer    = 0;
+    this.enginePulse  = 0;
+    this.wrongMode    = false;
+
+    this.targetLangLabel.textContent = LANG_NAMES[this.selectedLang];
+    this.hudCombo.textContent = '×0';
+    this.streakNum.textContent = '0';
+    this.comboBar.style.width = '0%';
+    this.hudTimer.textContent = GAME_DURATION;
+    this.hudTimer.classList.remove('danger');
+    this.hudDist.innerHTML = '0 <small style="font-size:0.6em">km</small>';
+
+    this.transitionTo('game', () => {
+      this.gameRunning = true;
+      this.loadNextWord();
+      this.lastTime = performance.now();
+      cancelAnimationFrame(this.animId);
+      this.animId = requestAnimationFrame(t => this.gameLoop(t));
+      setTimeout(() => this.answerInput.focus(), 100);
+    });
+  }
+
+  gameLoop(ts) {
+    if (!this.gameRunning) return;
+    const dt = Math.min(0.05, (ts - this.lastTime) / 1000);
+    this.lastTime = ts;
+    this.timerAcc += dt;
+
+    // Timer
+    if (this.timerAcc >= 1) {
+      this.timerAcc -= 1;
+      this.timeLeft--;
+      this.hudTimer.textContent = this.timeLeft;
+      this.hudTimer.classList.toggle('danger', this.timeLeft <= 10);
+      if (this.timeLeft <= 0) {
+        this.endGame();
+        return;
+      }
+    }
+
+    // Speed management
+    this.enginePulse += dt;
+    if (this.boostTimer > 0) {
+      this.boostTimer -= dt;
+    } else {
+      // Decay toward base
+      this.speed = lerp(this.speed, this.baseSpeed + this.combo * 0.1, dt * 0.5);
+    }
+    this.speed = Math.max(0.8, Math.min(6, this.speed));
+
+    // Distance
+    this.distance += this.speed * 10 * dt;
+    this.hudDist.innerHTML = `${Math.floor(this.distance).toLocaleString()} <small style="font-size:0.6em">km</small>`;
+
+    // Update world
+    this.updateStars(dt);
+    this.updateNebulae(dt);
+    this.updatePlanets(dt);
+    this.updateAsteroid(dt);
+    this.updateLasers(dt);
+    this.updateParticles(dt);
+    this.updateTrail();
+
+    // Render
+    const ctx = this.gCtx;
+    this.drawBackground(ctx);
+    this.drawTrail(ctx);
+    this.drawLasers(ctx);
+    if (this.asteroid && this.currWord) {
+      this.drawAsteroid(ctx, this.currWord.word.toUpperCase());
+    }
+    this.drawParticles(ctx);
+    this.drawRocket(ctx, this.rocketX, this.rocketY, this.speed, this.boostTimer > 0);
+
+    this.animId = requestAnimationFrame(t => this.gameLoop(t));
+  }
+
+  endGame() {
+    this.gameRunning = false;
+    cancelAnimationFrame(this.animId);
+
+    const score = Math.floor(this.distance) + this.correctCount * 150 + this.maxCombo * 75;
+    const ranks = [
+      [0,    'CADET'],
+      [500,  'PILOT'],
+      [1500, 'ACE'],
+      [3000, 'COMMANDER'],
+      [6000, 'ADMIRAL'],
+      [10000,'LEGEND'],
+    ];
+    const rank = ranks.reduce((acc, [min, r]) => score >= min ? r : acc, 'CADET');
+
+    this.endPilot.textContent   = `PILOT: ${this.playerName.toUpperCase()}`;
+    this.endScore.textContent   = score.toLocaleString();
+    this.endRank.textContent    = `— ${rank} —`;
+    this.endDist.textContent    = Math.floor(this.distance).toLocaleString();
+    this.endCorrect.textContent = this.correctCount;
+    this.endCombo.textContent   = this.maxCombo;
+
+    // Save high score
+    const hs = JSON.parse(localStorage.getItem('starlingo_hs') || '{}');
+    const key = `${this.playerName}_${this.selectedLang}`;
+    if (!hs[key] || score > hs[key]) hs[key] = score;
+    localStorage.setItem('starlingo_hs', JSON.stringify(hs));
+
+    this.transitionTo('end', () => {
+      this.runEndBackground();
+    });
+  }
+
+  replayGame() {
+    this.transitionTo('game', () => {
+      this.startGame();
+    });
+  }
+
+  goToMenu() {
+    this.transitionTo('start', () => {
+      this.runStartBackground();
+    });
+  }
+
+  // ── SCREEN TRANSITIONS ──
+  transitionTo(screenName, cb) {
+    this.overlay.classList.add('fade-in');
+    setTimeout(() => {
+      this.startScreen.classList.remove('active');
+      this.gameScreen.classList.remove('active');
+      this.endScreen.classList.remove('active');
+      if (screenName === 'start') this.startScreen.classList.add('active');
+      if (screenName === 'game')  this.gameScreen.classList.add('active');
+      if (screenName === 'end')   this.endScreen.classList.add('active');
+      this.overlay.classList.remove('fade-in');
+      this.overlay.classList.add('fade-out');
+      setTimeout(() => {
+        this.overlay.classList.remove('fade-out');
+        if (cb) cb();
+      }, 400);
+    }, 400);
+  }
+
+  // ── BACKGROUND ANIMATIONS ──
+  runStartBackground() {
+    cancelAnimationFrame(this.bgAnimId);
+    const ctx = this.sCtx;
+    let last = performance.now();
+    const loop = (ts) => {
+      if (!this.startScreen.classList.contains('active')) return;
+      const dt = Math.min(0.05, (ts - last) / 1000);
+      last = ts;
+      this.updateStars(dt, 1);
+      this.updateNebulae(dt);
+      this.updatePlanets(dt);
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(0, 0, this.W, this.H);
+      this.drawNebulae(ctx);
+      this.drawPlanets(ctx);
+      this.drawStars(ctx, 1);
+      this.bgAnimId = requestAnimationFrame(loop);
+    };
+    this.bgAnimId = requestAnimationFrame(loop);
+  }
+
+  runEndBackground() {
+    cancelAnimationFrame(this.bgAnimId);
+    const ctx = this.eCtx;
+    let last = performance.now();
+    const loop = (ts) => {
+      if (!this.endScreen.classList.contains('active')) return;
+      const dt = Math.min(0.05, (ts - last) / 1000);
+      last = ts;
+      this.updateStars(dt, 1.5);
+      this.updateNebulae(dt);
+      this.updatePlanets(dt);
+      ctx.fillStyle = '#050510';
+      ctx.fillRect(0, 0, this.W, this.H);
+      this.drawNebulae(ctx);
+      this.drawPlanets(ctx);
+      this.drawStars(ctx, 1.5);
+      this.bgAnimId = requestAnimationFrame(loop);
+    };
+    this.bgAnimId = requestAnimationFrame(loop);
+  }
+}
+
+// ── BOOT ──
+window.addEventListener('DOMContentLoaded', () => {
+  window._game = new StarLingoGame();
+});
+</script>
+</body>
+</html>
