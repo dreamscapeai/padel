@@ -1,0 +1,6 @@
+server/node_modules/
+server/uploads/
+server/history.json
+server/.env
+*.log
+.DS_Store

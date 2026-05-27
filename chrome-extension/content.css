@@ -1,0 +1,113 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   VirtualFit Content Script Styles
+   Injected on all pages to overlay checkboxes on images.
+   All class names are prefixed with `vf-` to avoid collisions.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Wrapper ─────────────────────────────────────────────────────────────── */
+.vf-wrapper {
+  position: relative !important;
+  display: inline-block !important;
+}
+
+/* When the parent is a flex/grid container, inherit layout naturally */
+.vf-wrapper.vf-flex-child {
+  display: contents !important; /* See content.js: applied conditionally */
+}
+
+/* ── Checkbox Bubble (top-right corner of each image) ────────────────────── */
+.vf-checkbox {
+  position: absolute !important;
+  top: 8px !important;
+  right: 8px !important;
+  width: 30px !important;
+  height: 30px !important;
+  border-radius: 50% !important;
+  background: rgba(15, 15, 26, 0.65) !important;
+  border: 2px solid rgba(255, 255, 255, 0.55) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  opacity: 0 !important;
+  transform: scale(0.7) !important;
+  transition: opacity 0.18s ease, transform 0.18s ease, background 0.18s ease, border-color 0.18s ease !important;
+  z-index: 2147483647 !important;
+  backdrop-filter: blur(6px) !important;
+  -webkit-backdrop-filter: blur(6px) !important;
+  cursor: pointer !important;
+  pointer-events: all !important;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+  box-sizing: border-box !important;
+}
+
+/* Show checkbox on hover or when checked */
+.vf-wrapper:hover .vf-checkbox,
+.vf-checkbox.vf-checked {
+  opacity: 1 !important;
+  transform: scale(1) !important;
+}
+
+/* Checked state: purple fill */
+.vf-checkbox.vf-checked {
+  background: #7c3aed !important;
+  border-color: #7c3aed !important;
+  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.35), 0 2px 12px rgba(0, 0, 0, 0.4) !important;
+}
+
+/* Checkmark SVG */
+.vf-checkbox svg {
+  width: 15px !important;
+  height: 15px !important;
+  stroke: white !important;
+  stroke-width: 3 !important;
+  fill: none !important;
+  stroke-linecap: round !important;
+  stroke-linejoin: round !important;
+  display: none !important;
+  pointer-events: none !important;
+}
+
+.vf-checkbox.vf-checked svg {
+  display: block !important;
+}
+
+/* ── Selected Image: Purple Outline ──────────────────────────────────────── */
+.vf-wrapper.vf-selected > img,
+.vf-wrapper.vf-selected img:first-child {
+  outline: 3px solid #7c3aed !important;
+  outline-offset: 2px !important;
+  border-radius: 4px !important;
+}
+
+/* ── "Try On" Label Badge (appears on selected image) ────────────────────── */
+.vf-label {
+  position: absolute !important;
+  bottom: 8px !important;
+  left: 8px !important;
+  background: #7c3aed !important;
+  color: white !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+  padding: 3px 8px !important;
+  border-radius: 20px !important;
+  pointer-events: none !important;
+  z-index: 2147483646 !important;
+  opacity: 0 !important;
+  transform: translateY(4px) !important;
+  transition: opacity 0.2s ease, transform 0.2s ease !important;
+  white-space: nowrap !important;
+  letter-spacing: 0.3px !important;
+}
+
+.vf-wrapper.vf-selected .vf-label {
+  opacity: 1 !important;
+  transform: translateY(0) !important;
+}
+
+/* ── Hover Glow Effect ────────────────────────────────────────────────────── */
+.vf-wrapper:hover > img,
+.vf-wrapper:hover img:first-child {
+  box-shadow: 0 0 0 1px rgba(124, 58, 237, 0.3) !important;
+  transition: box-shadow 0.15s ease !important;
+}

@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: virtual-tryon-api
+    runtime: node
+    region: oregon
+    plan: free
+    rootDir: server
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: WAVESPEED_API_KEY
+        sync: false   # Set manually in the Render dashboard — never commit this!
+      - key: SERVER_URL
+        sync: false   # Set to your Render URL after first deploy, e.g. https://virtual-tryon-api.onrender.com
+      - key: NODE_ENV
+        value: production
+    # ── Persistent Disk (requires Starter plan ~$7/mo) ──────────────────────
+    # Enables history and result images to survive redeployments.
+    # Comment out the disk section if you're on the free tier.
+    disk:
+      name: tryon-uploads
+      mountPath: /opt/render/project/src/uploads
+      sizeGB: 1
