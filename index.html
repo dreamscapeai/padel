@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Chess Coach — Play & Analyze</title>
+  <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header>
+    <h1>Chess Coach</h1>
+    <p class="subtitle">Play both colors. Every move gets a Stockfish verdict.</p>
+  </header>
+
+  <main>
+    <section class="board-area">
+      <div id="board"></div>
+      <div class="controls">
+        <div class="turn">
+          Turn: <strong id="turn">White</strong>
+          <span id="status"></span>
+        </div>
+        <div class="buttons">
+          <button id="undo">Undo</button>
+          <button id="reset">New game</button>
+          <button id="flip">Flip board</button>
+        </div>
+        <div class="depth">
+          Engine depth:
+          <input id="depth" type="range" min="6" max="18" value="12" />
+          <span id="depthValue">12</span>
+        </div>
+        <div id="engineStatus" class="engine-status">Loading Stockfish…</div>
+      </div>
+    </section>
+
+    <section class="commentary-area">
+      <h2>Move-by-move commentary</h2>
+      <ol id="moves"></ol>
+    </section>
+  </main>
+
+  <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+  <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chess.js@0.10.3/chess.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,115 @@
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #1e1e22;
+  color: #e8e8ea;
+  line-height: 1.5;
+}
+
+header {
+  padding: 20px 32px 8px;
+  border-bottom: 1px solid #2c2c32;
+}
+
+header h1 { margin: 0; font-size: 22px; }
+.subtitle { margin: 4px 0 12px; color: #9a9aa3; font-size: 14px; }
+
+main {
+  display: grid;
+  grid-template-columns: minmax(420px, 560px) 1fr;
+  gap: 32px;
+  padding: 24px 32px;
+}
+
+@media (max-width: 960px) {
+  main { grid-template-columns: 1fr; }
+}
+
+.board-area { display: flex; flex-direction: column; gap: 14px; }
+#board { width: 100%; max-width: 520px; }
+
+.controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+  background: #26262c;
+  border-radius: 8px;
+  font-size: 14px;
+}
+
+.turn strong { color: #fff; }
+.turn #status { margin-left: 10px; color: #f5a623; font-weight: 600; }
+
+.buttons { display: flex; gap: 8px; }
+.buttons button {
+  background: #3a3a44;
+  color: #e8e8ea;
+  border: 1px solid #4a4a55;
+  padding: 6px 12px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.buttons button:hover { background: #44444f; }
+
+.depth { display: flex; align-items: center; gap: 10px; }
+.depth input { flex: 1; }
+
+.engine-status { font-size: 12px; color: #9a9aa3; font-style: italic; }
+.engine-status.ready { color: #6ec96e; }
+.engine-status.thinking { color: #f5a623; }
+
+.commentary-area h2 { margin-top: 0; font-size: 16px; color: #c0c0ca; }
+
+#moves {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  max-height: 70vh;
+  overflow-y: auto;
+}
+
+#moves li {
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  background: #26262c;
+  border-left: 4px solid #4a4a55;
+  border-radius: 4px;
+}
+
+.move-header {
+  font-weight: 600;
+  font-size: 14px;
+  margin-bottom: 4px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.move-num { color: #9a9aa3; }
+.move-san { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+
+.verdict {
+  font-size: 11px;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border-radius: 10px;
+  letter-spacing: 0.5px;
+}
+.verdict.best     { background: #1f6e3a; color: #d4f7dc; }
+.verdict.good     { background: #2e5b8a; color: #cfe2f7; }
+.verdict.inaccuracy { background: #8a6b2e; color: #fbe9c0; }
+.verdict.mistake  { background: #8a3e2e; color: #fbcfc0; }
+.verdict.blunder  { background: #6e1f1f; color: #f7d4d4; }
+.verdict.book     { background: #4a4a55; color: #d8d8e0; }
+
+.commentary { font-size: 13px; color: #d4d4dc; margin-top: 4px; }
+.commentary .detail { color: #9a9aa3; font-size: 12px; margin-top: 4px; }
+
+#moves li.thinking { opacity: 0.6; }
+
+#moves li[data-color="b"] { border-left-color: #888; }
+#moves li[data-color="w"] { border-left-color: #ddd; }
