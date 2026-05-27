@@ -1,112 +1,123 @@
-/* Chess coach: chessboard.js for UI, chess.js for rules, Stockfish (WASM/JS) for analysis. */
+/* ─────────────────────────────────────────────
+   Chess Coach — app.js
+   chess.js  → move rules & validation
+   chessboard.js → board UI
+   Stockfish 10 (JS) → loaded as blob Worker
+   ───────────────────────────────────────────── */
 
-const game = new Chess();
-let board;
-let depth = 12;
+'use strict';
 
-const $status = document.getElementById('status');
-const $turn = document.getElementById('turn');
-const $moves = document.getElementById('moves');
-const $engineStatus = document.getElementById('engineStatus');
-const $depth = document.getElementById('depth');
-const $depthValue = document.getElementById('depthValue');
+// ── Game state ──────────────────────────────
+const game  = new Chess();
+let   board = null;
+let   depth = 12;
 
-/* ---------- Stockfish worker ---------- */
-/* We fetch the engine script as a blob so we can spawn it as a same-origin Worker. */
-let stockfish = null;
-let engineReady = false;
-const STOCKFISH_URL = 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js';
+// ── DOM refs ─────────────────────────────────
+const $engineBadge  = document.getElementById('engineBadge');
+const $engineLabel  = document.getElementById('engineLabel');
+const $turnIndicator = document.getElementById('turnIndicator');
+const $turnDot      = $turnIndicator.querySelector('.turn-dot');
+const $turnLabel    = document.getElementById('turnLabel');
+const $gameStatus   = document.getElementById('gameStatus');
+const $feed         = document.getElementById('feed');
+const $feedEmpty    = document.getElementById('feedEmpty');
+const $moveCount    = document.getElementById('moveCount');
+const $depthSlider  = document.getElementById('depthSlider');
+const $depthVal     = document.getElementById('depthVal');
+
+// ── Stockfish engine ─────────────────────────
+const SF_URL = 'https://cdn.jsdelivr.net/npm/stockfish.js@10.0.2/stockfish.js';
+let   sfWorker       = null;
+let   engineReady    = false;
+
+const analysisQueue  = [];   // { fen, depth, resolve }
+let   activeJob      = null;
+let   latestInfo     = newInfo();
+
+function newInfo() {
+  return { cp: null, mate: null, bestmove: null, pv: null };
+}
 
 async function bootEngine() {
   try {
-    const res = await fetch(STOCKFISH_URL);
+    const res  = await fetch(SF_URL);
     const code = await res.text();
     const blob = new Blob([code], { type: 'application/javascript' });
-    stockfish = new Worker(URL.createObjectURL(blob));
-    stockfish.onmessage = onEngineMessage;
-    stockfish.postMessage('uci');
-    stockfish.postMessage('isready');
+    sfWorker   = new Worker(URL.createObjectURL(blob));
+    sfWorker.onmessage = onEngineMsg;
+    sfWorker.postMessage('uci');
+    sfWorker.postMessage('isready');
   } catch (e) {
-    $engineStatus.textContent = 'Engine failed to load — using heuristic commentary only.';
-    console.error(e);
+    $engineLabel.textContent = 'Engine unavailable';
+    console.error('Stockfish load error:', e);
   }
 }
 
-const pendingAnalyses = []; // queue of { fen, resolve, kind }
-let currentAnalysis = null;
-let currentInfo = { cp: null, mate: null, bestmove: null, pv: null };
-
-function onEngineMessage(e) {
+function onEngineMsg(e) {
   const line = typeof e.data === 'string' ? e.data : '';
   if (!line) return;
 
-  if (line === 'uciok') {
-    stockfish.postMessage('setoption name Threads value 1');
-    stockfish.postMessage('setoption name Hash value 32');
-  }
   if (line === 'readyok') {
     if (!engineReady) {
       engineReady = true;
-      $engineStatus.textContent = 'Stockfish ready.';
-      $engineStatus.classList.add('ready');
-      drainQueue();
+      $engineLabel.textContent = 'Stockfish ready';
+      $engineBadge.classList.add('ready');
+      flushQueue();
     }
     return;
   }
 
   if (line.startsWith('info')) {
-    // Parse score cp / score mate, and pv
-    const cpMatch = line.match(/score cp (-?\d+)/);
-    const mateMatch = line.match(/score mate (-?\d+)/);
-    const pvMatch = line.match(/ pv (.+)$/);
-    if (cpMatch) { currentInfo.cp = parseInt(cpMatch[1], 10); currentInfo.mate = null; }
-    if (mateMatch) { currentInfo.mate = parseInt(mateMatch[1], 10); currentInfo.cp = null; }
-    if (pvMatch) currentInfo.pv = pvMatch[1].trim().split(/\s+/);
-  } else if (line.startsWith('bestmove')) {
-    const parts = line.split(/\s+/);
-    currentInfo.bestmove = parts[1];
-    if (currentAnalysis) {
-      currentAnalysis.resolve({ ...currentInfo });
-      currentAnalysis = null;
-      currentInfo = { cp: null, mate: null, bestmove: null, pv: null };
-      drainQueue();
+    const cpM    = line.match(/score cp (-?\d+)/);
+    const mateM  = line.match(/score mate (-?\d+)/);
+    const pvM    = line.match(/ pv ([a-h][1-8][a-h][1-8]\S*)/);
+    if (cpM)   { latestInfo.cp   = parseInt(cpM[1], 10); latestInfo.mate = null; }
+    if (mateM) { latestInfo.mate = parseInt(mateM[1], 10); latestInfo.cp  = null; }
+    if (pvM)   { latestInfo.pv   = pvM[1].split(/\s+/); }
+  }
+
+  if (line.startsWith('bestmove')) {
+    latestInfo.bestmove = line.split(/\s+/)[1] ?? null;
+    if (activeJob) {
+      activeJob.resolve({ ...latestInfo });
+      activeJob   = null;
+      latestInfo  = newInfo();
+      flushQueue();
     }
   }
 }
 
-function drainQueue() {
-  if (currentAnalysis || pendingAnalyses.length === 0 || !engineReady) return;
-  currentAnalysis = pendingAnalyses.shift();
-  stockfish.postMessage('ucinewgame');
-  stockfish.postMessage('position fen ' + currentAnalysis.fen);
-  stockfish.postMessage('go depth ' + currentAnalysis.depth);
+function flushQueue() {
+  if (activeJob || analysisQueue.length === 0 || !engineReady) return;
+  activeJob = analysisQueue.shift();
+  sfWorker.postMessage('ucinewgame');
+  sfWorker.postMessage('position fen ' + activeJob.fen);
+  sfWorker.postMessage('go depth '    + activeJob.depth);
 }
 
-function analyze(fen, d = depth) {
-  return new Promise((resolve) => {
-    if (!stockfish) { resolve(null); return; }
-    pendingAnalyses.push({ fen, depth: d, resolve });
-    drainQueue();
+function analyze(fen) {
+  return new Promise(resolve => {
+    if (!sfWorker) { resolve(null); return; }
+    analysisQueue.push({ fen, depth, resolve });
+    flushQueue();
   });
 }
 
-/* ---------- Board wiring ---------- */
+// ── Board wiring ─────────────────────────────
 function onDragStart(source, piece) {
   if (game.game_over()) return false;
-  // Only allow moving the side whose turn it is (you still control both, just alternating)
-  if ((game.turn() === 'w' && piece.search(/^b/) !== -1) ||
-      (game.turn() === 'b' && piece.search(/^w/) !== -1)) {
-    return false;
-  }
+  const isWhite = piece.startsWith('w');
+  if ((game.turn() === 'w' && !isWhite) || (game.turn() === 'b' && isWhite)) return false;
 }
 
 function onDrop(source, target) {
   const fenBefore = game.fen();
   const move = game.move({ from: source, to: target, promotion: 'q' });
-  if (move === null) return 'snapback';
+  if (!move) return 'snapback';
+
   const fenAfter = game.fen();
-  appendMovePlaceholder(move);
-  analyzeMove(move, fenBefore, fenAfter);
+  spawnCard(move);
+  runAnalysis(move, fenBefore, fenAfter);
 }
 
 function onSnapEnd() {
@@ -115,216 +126,311 @@ function onSnapEnd() {
 }
 
 function refreshStatus() {
-  $turn.textContent = game.turn() === 'w' ? 'White' : 'Black';
+  const isWhite = game.turn() === 'w';
+  $turnDot.className  = 'turn-dot ' + (isWhite ? 'white' : 'black');
+  $turnLabel.textContent = isWhite ? 'White to move' : 'Black to move';
+
   let s = '';
-  if (game.in_checkmate()) s = 'Checkmate.';
-  else if (game.in_stalemate()) s = 'Stalemate.';
-  else if (game.in_draw()) s = 'Draw.';
-  else if (game.in_check()) s = 'Check!';
-  $status.textContent = s;
+  if      (game.in_checkmate()) s = 'Checkmate';
+  else if (game.in_stalemate()) s = 'Stalemate';
+  else if (game.in_draw())      s = 'Draw';
+  else if (game.in_check())     s = 'Check';
+  $gameStatus.textContent = s;
+
+  const n = game.history().length;
+  $moveCount.textContent = n + (n === 1 ? ' move' : ' moves');
 }
 
-/* ---------- Commentary ---------- */
-function classify(cpLoss, isBest) {
-  if (isBest || cpLoss <= 10) return 'best';
-  if (cpLoss <= 40) return 'good';
-  if (cpLoss <= 90) return 'inaccuracy';
-  if (cpLoss <= 200) return 'mistake';
-  return 'blunder';
-}
+// ── Commentary card ───────────────────────────
+function spawnCard(move) {
+  $feedEmpty && ($feedEmpty.style.display = 'none');
 
-function fmtEval(info, sideToMove) {
-  if (!info) return '?';
-  if (info.mate !== null && info.mate !== undefined) {
-    const m = sideToMove === 'w' ? info.mate : -info.mate;
-    return (m > 0 ? '#' : '#-') + Math.abs(m);
-  }
-  if (info.cp === null || info.cp === undefined) return '?';
-  const cp = sideToMove === 'w' ? info.cp : -info.cp;
-  const pawns = (cp / 100).toFixed(2);
-  return (cp >= 0 ? '+' : '') + pawns;
-}
+  const hist = game.history();
+  const total = hist.length;
+  const moveNo = Math.ceil(total / 2);
+  const side   = move.color === 'w' ? '' : '…';
 
-function uciToSan(fen, uci) {
-  if (!uci || uci === '(none)') return null;
-  const tmp = new Chess(fen);
-  const from = uci.slice(0, 2);
-  const to = uci.slice(2, 4);
-  const promo = uci.length > 4 ? uci[4] : undefined;
-  const m = tmp.move({ from, to, promotion: promo });
-  return m ? m.san : null;
-}
+  const card = document.createElement('div');
+  card.className = 'card thinking';
+  card.dataset.moveIdx = total - 1;
 
-function describeMove(move) {
-  const bits = [];
-  if (move.flags.includes('k')) bits.push('castles kingside');
-  else if (move.flags.includes('q')) bits.push('castles queenside');
-  else {
-    const pieceName = {
-      p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen', k: 'king',
-    }[move.piece];
-    if (move.flags.includes('c') || move.flags.includes('e')) {
-      const cap = move.captured ? {
-        p: 'pawn', n: 'knight', b: 'bishop', r: 'rook', q: 'queen',
-      }[move.captured] : 'piece';
-      bits.push(`${pieceName} captures ${cap} on ${move.to}`);
-    } else {
-      bits.push(`${pieceName} to ${move.to}`);
-    }
-  }
-  if (move.promotion) bits.push(`promotes to ${move.promotion.toUpperCase()}`);
-  if (move.san.endsWith('#')) bits.push('delivers checkmate');
-  else if (move.san.endsWith('+')) bits.push('gives check');
-  return bits.join(', ');
-}
-
-function buildCommentary(quality, cpLoss, bestSan, evalBeforeStr, evalAfterStr, move) {
-  const desc = describeMove(move);
-  let lead;
-  switch (quality) {
-    case 'best':
-      lead = `Best move. ${capitalize(desc)}.`;
-      break;
-    case 'good':
-      lead = `Good move. ${capitalize(desc)}.`;
-      break;
-    case 'inaccuracy':
-      lead = `Inaccuracy. ${capitalize(desc)}, but the engine preferred ${bestSan ?? '—'}.`;
-      break;
-    case 'mistake':
-      lead = `Mistake. ${capitalize(desc)} concedes ground; ${bestSan ?? '—'} was stronger.`;
-      break;
-    case 'blunder':
-      lead = `Blunder! ${capitalize(desc)} drops material or the initiative — ${bestSan ?? '—'} was the way.`;
-      break;
-  }
-  const detail = `Eval before: ${evalBeforeStr} → after: ${evalAfterStr}` +
-    (cpLoss !== null ? ` (centipawn loss: ${cpLoss})` : '');
-  return { lead, detail };
-}
-
-function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
-
-/* ---------- Render ---------- */
-function appendMovePlaceholder(move) {
-  const li = document.createElement('li');
-  li.className = 'thinking';
-  li.dataset.color = move.color;
-  const moveNum = Math.ceil(game.history().length / 2);
-  const dots = move.color === 'b' ? '…' : '.';
-  li.innerHTML = `
-    <div class="move-header">
-      <span class="move-num">${moveNum}${dots}</span>
-      <span class="move-san">${move.san}</span>
-      <span class="verdict" data-slot="verdict">analyzing…</span>
+  card.innerHTML = `
+    <div class="card-top">
+      <span class="card-num">${moveNo}${side}</span>
+      <span class="card-san">${move.san}</span>
+      <span class="card-symbol" data-slot="symbol">⏳</span>
+      <span class="card-verdict" data-slot="verdict"><span class="thinking-dots"></span></span>
     </div>
-    <div class="commentary" data-slot="commentary">Stockfish is thinking…</div>
+    <div class="card-body">
+      <div data-slot="comment" class="thinking-dots"></div>
+    </div>
+    <div class="card-eval" data-slot="eval" style="display:none"></div>
   `;
-  $moves.appendChild(li);
-  li.scrollIntoView({ block: 'end' });
-  refreshStatus();
+
+  $feed.appendChild(card);
+  card.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  return card;
 }
 
-function updateLastMoveCard(verdict, lead, detail) {
-  const li = $moves.lastElementChild;
-  if (!li) return;
-  li.classList.remove('thinking');
-  const v = li.querySelector('[data-slot="verdict"]');
-  const c = li.querySelector('[data-slot="commentary"]');
-  v.textContent = verdict;
-  v.className = 'verdict ' + verdict;
-  c.innerHTML = `${lead}<div class="detail">${detail}</div>`;
+function fillCard(card, { quality, symbol, verdict, comment, suggest,
+                          evalBefore, evalAfter, cpLoss, bestSan }) {
+  card.className = 'card ' + quality;
+  card.querySelector('[data-slot="symbol"]').textContent  = symbol;
+  card.querySelector('[data-slot="verdict"]').textContent = verdict;
+
+  const commentEl = card.querySelector('[data-slot="comment"]');
+  commentEl.textContent = comment;
+  if (suggest) {
+    const s = document.createElement('div');
+    s.className = 'suggest';
+    s.innerHTML = 'Engine preferred <code>' + suggest + '</code>';
+    commentEl.after(s);
+  }
+
+  // Eval row
+  if (evalBefore !== null || evalAfter !== null) {
+    const evalEl = card.querySelector('[data-slot="eval"]');
+    evalEl.style.display = 'flex';
+
+    const fmt = (v) => {
+      if (v === null) return { txt: '?', cls: '' };
+      if (typeof v === 'string') return { txt: v, cls: '' };
+      const txt = (v >= 0 ? '+' : '') + (v / 100).toFixed(2);
+      return { txt, cls: v >= 0 ? 'positive' : 'negative' };
+    };
+
+    const before = fmt(evalBefore);
+    const after  = fmt(evalAfter);
+    const loss   = cpLoss !== null ? `${cpLoss} cp loss` : '';
+
+    evalEl.innerHTML = `
+      <span class="eval-chip ${before.cls}">${before.txt}</span>
+      <span class="eval-arrow">→</span>
+      <span class="eval-chip ${after.cls}">${after.txt}</span>
+      ${loss ? `<span class="eval-loss">${loss}</span>` : ''}
+    `;
+  }
 }
 
-/* ---------- Analyze a played move ---------- */
-async function analyzeMove(move, fenBefore, fenAfter) {
-  $engineStatus.textContent = 'Stockfish thinking…';
-  $engineStatus.classList.add('thinking');
+// ── Analysis logic ────────────────────────────
+async function runAnalysis(move, fenBefore, fenAfter) {
+  const card = $feed.lastElementChild;
 
-  const before = await analyze(fenBefore, depth);
-  const after  = await analyze(fenAfter,  depth);
+  $engineBadge.className = 'engine-badge thinking';
+  $engineLabel.textContent = 'Analysing…';
 
-  $engineStatus.classList.remove('thinking');
-  $engineStatus.textContent = 'Stockfish ready.';
+  const [infoBefore, infoAfter] = await Promise.all([
+    analyze(fenBefore),
+    analyze(fenAfter),
+  ]);
 
-  if (!before || !after) {
-    updateLastMoveCard('book', `${capitalize(describeMove(move))}.`, 'Engine unavailable.');
+  $engineBadge.className = 'engine-badge ready';
+  $engineLabel.textContent = 'Stockfish ready';
+
+  if (!infoBefore || !infoAfter) {
+    fillCard(card, {
+      quality: 'good', symbol: '?', verdict: 'Unknown',
+      comment: describeMove(move) + '.',
+      suggest: null, evalBefore: null, evalAfter: null, cpLoss: null, bestSan: null,
+    });
     return;
   }
 
-  const sideToMove = move.color; // 'w' or 'b' — the side that just moved
-  // Stockfish reports score from the perspective of the side TO MOVE in the analyzed FEN.
-  // before: side to move was `sideToMove`. after: side to move is the opponent.
-  // Convert both to centipawns from `sideToMove`'s perspective.
-  const toCp = (info, sign) => {
-    if (info.mate !== null && info.mate !== undefined) {
-      // big magnitude with correct sign
-      return sign * (info.mate > 0 ? 100000 - info.mate : -100000 - info.mate);
-    }
-    return info.cp === null || info.cp === undefined ? null : sign * info.cp;
-  };
-  const cpBefore = toCp(before, +1);  // already from sideToMove perspective
-  const cpAfter  = toCp(after,  -1);  // flip because side-to-move flipped
+  // Centipawn from the MOVING side's perspective:
+  //   infoBefore.cp is from side-to-move perspective at fenBefore → that IS the mover
+  //   infoAfter.cp is from side-to-move at fenAfter → that's the OPPONENT → negate
+  const cpBefore = toCp(infoBefore, +1);
+  const cpAfter  = toCp(infoAfter,  -1);
+
   const cpLoss = (cpBefore !== null && cpAfter !== null)
     ? Math.max(0, Math.round(cpBefore - cpAfter))
     : null;
 
-  const bestUci = before.bestmove;
+  const bestUci = infoBefore.bestmove;
   const bestSan = bestUci ? uciToSan(fenBefore, bestUci) : null;
-  const isBest = bestSan && bestSan === move.san;
+  const isBest  = !!bestSan && bestSan === move.san;
 
-  const quality = classify(cpLoss ?? 0, isBest);
+  const quality = classifyMove(cpLoss, isBest);
+  const { symbol, verdict } = QUALITY_META[quality];
 
-  const evalBeforeStr = fmtEval(before, sideToMove);
-  // For "after", we want eval from white's frame consistently — use side-to-move at fenAfter (opponent), then flip
-  const evalAfterStr = fmtEval(after, sideToMove === 'w' ? 'b' : 'w'); // raw from after's side
-  // Flip sign for display from same perspective
-  const evalAfterFromMoverPerspective = (function () {
-    if (after.mate !== null && after.mate !== undefined) {
-      const m = -after.mate; // opponent will deliver mate in n => mover gets mated in n
-      return (m > 0 ? '#' : '#-') + Math.abs(m);
+  const comment = buildComment(quality, move, game, cpLoss);
+  const suggest = (!isBest && quality !== 'best' && bestSan) ? bestSan : null;
+
+  // Display evals from white's perspective for consistency
+  const evalFromWhite = (info, sideToMove) => {
+    if (info.mate !== null && info.mate !== undefined) {
+      const m = sideToMove === 'w' ? info.mate : -info.mate;
+      return (m > 0 ? 'M' : '-M') + Math.abs(m);
     }
-    if (after.cp === null || after.cp === undefined) return '?';
-    const cp = -after.cp;
-    return (cp >= 0 ? '+' : '') + (cp / 100).toFixed(2);
-  })();
+    if (info.cp === null) return null;
+    return sideToMove === 'w' ? info.cp : -info.cp;
+  };
 
-  const { lead, detail } = buildCommentary(
-    quality, cpLoss, bestSan,
-    evalBeforeStr,
-    evalAfterFromMoverPerspective,
-    move
-  );
-  updateLastMoveCard(quality, lead, detail);
+  const evalBefore = evalFromWhite(infoBefore, move.color);
+  // fenAfter's side-to-move is the opponent
+  const evalAfter  = evalFromWhite(infoAfter, move.color === 'w' ? 'b' : 'w');
+  // negate because infoAfter reports from the opponent's perspective
+  const evalAfterAdjusted = typeof evalAfter === 'number' ? -evalAfter : evalAfter;
+
+  fillCard(card, { quality, symbol, verdict, comment, suggest,
+                   evalBefore, evalAfter: evalAfterAdjusted,
+                   cpLoss: quality !== 'best' ? cpLoss : null,
+                   bestSan });
 }
 
-/* ---------- Buttons & init ---------- */
-document.getElementById('undo').addEventListener('click', () => {
-  if (game.history().length === 0) return;
+// ── Helpers ──────────────────────────────────
+function toCp(info, sign) {
+  if (!info) return null;
+  if (info.mate !== null && info.mate !== undefined) {
+    return sign * (info.mate > 0 ? 100000 - info.mate : -100000 - info.mate);
+  }
+  return (info.cp !== null && info.cp !== undefined) ? sign * info.cp : null;
+}
+
+function uciToSan(fen, uci) {
+  if (!uci || uci === '(none)') return null;
+  try {
+    const tmp  = new Chess(fen);
+    const move = tmp.move({ from: uci.slice(0,2), to: uci.slice(2,4),
+                             promotion: uci[4] ?? undefined });
+    return move ? move.san : null;
+  } catch { return null; }
+}
+
+function classifyMove(cpLoss, isBest) {
+  if (isBest || (cpLoss !== null && cpLoss <= 10)) return 'best';
+  if (cpLoss !== null && cpLoss <= 40)  return 'good';
+  if (cpLoss !== null && cpLoss <= 90)  return 'inaccuracy';
+  if (cpLoss !== null && cpLoss <= 200) return 'mistake';
+  return 'blunder';
+}
+
+const QUALITY_META = {
+  best:       { symbol: '!!', verdict: 'Best move' },
+  good:       { symbol: '!',  verdict: 'Good'       },
+  inaccuracy: { symbol: '?!', verdict: 'Inaccuracy' },
+  mistake:    { symbol: '?',  verdict: 'Mistake'    },
+  blunder:    { symbol: '??', verdict: 'Blunder'    },
+};
+
+// ── Rich commentary text ──────────────────────
+const CENTER_SQUARES = ['d4','d5','e4','e5'];
+const CENTER_REGION  = ['c3','c4','c5','c6','d3','d4','d5','d6','e3','e4','e5','e6','f3','f4','f5','f6'];
+
+function describeMove(move) {
+  const pieceName = {
+    p:'Pawn', n:'Knight', b:'Bishop', r:'Rook', q:'Queen', k:'King'
+  }[move.piece] ?? 'Piece';
+
+  if (move.flags.includes('k')) return 'castles kingside, safeguarding the king';
+  if (move.flags.includes('q')) return 'castles queenside, centralizing the rook';
+  if (move.san.endsWith('#'))   return `${pieceName} delivers checkmate on ${move.to}`;
+
+  const parts = [];
+  if (move.flags.includes('c') || move.flags.includes('e')) {
+    const cap = { p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen' }[move.captured ?? ''] ?? 'piece';
+    parts.push(`${pieceName} captures the ${cap} on ${move.to}`);
+  } else {
+    parts.push(`${pieceName} moves to ${move.to}`);
+  }
+
+  if (move.san.includes('+')) parts.push('giving check');
+  if (move.promotion)         parts.push(`promoting to ${move.promotion.toUpperCase()}`);
+
+  return parts.join(', ');
+}
+
+function buildComment(quality, move, gameAfter, cpLoss) {
+  const movePiece = { p:'pawn', n:'knight', b:'bishop', r:'rook', q:'queen', k:'king' }[move.piece];
+  const isOpening = gameAfter.history().length <= 20;
+  const isCapture = !!(move.flags.includes('c') || move.flags.includes('e'));
+  const isCheck   = move.san.includes('+');
+  const isMate    = move.san.includes('#');
+  const isCastle  = move.flags.includes('k') || move.flags.includes('q');
+  const toCenter  = CENTER_SQUARES.includes(move.to);
+  const toCentral = CENTER_REGION.includes(move.to);
+
+  // Opening heuristics
+  const developingPiece = isOpening && (move.piece === 'n' || move.piece === 'b') &&
+    ((move.color === 'w' && move.from[1] === '1') || (move.color === 'b' && move.from[1] === '8'));
+
+  if (isMate) return 'Checkmate delivered. The game is over.';
+
+  if (quality === 'best' || quality === 'good') {
+    if (isCastle) {
+      return move.flags.includes('k')
+        ? 'Kingside castling tucks the king to safety behind the f/g/h pawns and connects the rooks — a textbook priority.'
+        : 'Queenside castling activates the rook on d1/d8 immediately and keeps the king somewhat protected behind a pawn chain.';
+    }
+    if (isCapture && move.captured === 'q') return 'Winning the queen is a decisive material gain. The rest is technique.';
+    if (isCapture) {
+      const cap = { p:'pawn',n:'knight',b:'bishop',r:'rook',q:'queen' }[move.captured ?? ''] ?? 'piece';
+      return `Capturing the ${cap} is the correct recapture sequence here, maintaining material balance and leaving no loose pieces.`;
+    }
+    if (developingPiece && toCentral) {
+      return `Developing the ${movePiece} to a central or active square. In the opening, piece development and center control are the top priorities.`;
+    }
+    if (toCenter) return `Occupying the center with the ${movePiece}. Central pawns and pieces cramp the opponent and create space for an attack.`;
+    if (isCheck) return `The check forces the opponent to react, gaining a tempo and potentially disrupting their structure.`;
+    if (move.piece === 'r' || move.piece === 'q') {
+      return `Activating the ${movePiece} on an open file or key rank — the heavy pieces belong in the game, not sitting idle.`;
+    }
+    return `${describeMove(move)} — a principled move that improves piece coordination and leaves no weaknesses.`;
+  }
+
+  if (quality === 'inaccuracy') {
+    if (isCapture) {
+      return `The capture isn't wrong, but it may release central tension prematurely or hand the opponent a more active recapture.`;
+    }
+    if (developingPiece) {
+      return `Developing the ${movePiece}, but to a less optimal square. Pieces generally want to reach squares where they control the most area.`;
+    }
+    return `A reasonable move, but it slightly loosens the position or lets the opponent seize the initiative. ${cpLoss !== null ? `About ${cpLoss} centipawns below the best option.` : ''}`;
+  }
+
+  if (quality === 'mistake') {
+    if (isCapture) {
+      return `The capture looks tempting but likely creates a structural weakness or allows a counter-tactic the opponent can exploit.`;
+    }
+    return `This move hands the opponent a concrete advantage — either through a tactical sequence, a material imbalance, or a positional concession. (${cpLoss ?? '?'} cp loss)`;
+  }
+
+  // blunder
+  if (isCapture) {
+    return `Captures here are met by a strong counter-tactic — the material is poisoned. Stockfish sees immediate punishment. (${cpLoss ?? '?'} cp loss)`;
+  }
+  return `A serious error that likely drops material or allows a decisive tactical blow. Double-check for loose pieces, back-rank threats, and forks before moving. (${cpLoss ?? '?'} cp loss)`;
+}
+
+// ── Controls ─────────────────────────────────
+document.getElementById('undoBtn').addEventListener('click', () => {
+  if (!game.history().length) return;
   game.undo();
   board.position(game.fen());
-  const last = $moves.lastElementChild;
-  if (last) last.remove();
+  $feed.lastElementChild?.remove();
+  if (!game.history().length && $feedEmpty) $feedEmpty.style.display = '';
   refreshStatus();
 });
 
-document.getElementById('reset').addEventListener('click', () => {
+document.getElementById('resetBtn').addEventListener('click', () => {
   game.reset();
   board.start();
-  $moves.innerHTML = '';
+  $feed.innerHTML = '';
+  if ($feedEmpty) { $feed.appendChild($feedEmpty); $feedEmpty.style.display = ''; }
   refreshStatus();
 });
 
-document.getElementById('flip').addEventListener('click', () => board.flip());
+document.getElementById('flipBtn').addEventListener('click', () => board.flip());
 
-$depth.addEventListener('input', () => {
-  depth = parseInt($depth.value, 10);
-  $depthValue.textContent = depth;
+$depthSlider.addEventListener('input', () => {
+  depth = parseInt($depthSlider.value, 10);
+  $depthVal.textContent = depth;
 });
 
+// ── Init ─────────────────────────────────────
 board = Chessboard('board', {
   draggable: true,
-  position: 'start',
+  position:  'start',
   pieceTheme: 'https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/website/img/chesspieces/wikipedia/{piece}.png',
   onDragStart,
   onDrop,

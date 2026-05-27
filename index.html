@@ -2,43 +2,87 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>Chess Coach — Play & Analyze</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Chess Coach</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.css" />
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
+
+  <!-- Header -->
   <header>
-    <h1>Chess Coach</h1>
-    <p class="subtitle">Play both colors. Every move gets a Stockfish verdict.</p>
+    <div class="logo">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M9 18H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h4"/>
+        <path d="M15 18h4a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-4"/>
+        <path d="M12 2v20"/>
+      </svg>
+      Chess Coach
+    </div>
+    <div class="header-right">
+      <div class="engine-badge" id="engineBadge">
+        <span class="engine-dot"></span>
+        <span id="engineLabel">Loading engine…</span>
+      </div>
+    </div>
   </header>
 
-  <main>
-    <section class="board-area">
-      <div id="board"></div>
-      <div class="controls">
-        <div class="turn">
-          Turn: <strong id="turn">White</strong>
-          <span id="status"></span>
-        </div>
-        <div class="buttons">
-          <button id="undo">Undo</button>
-          <button id="reset">New game</button>
-          <button id="flip">Flip board</button>
-        </div>
-        <div class="depth">
-          Engine depth:
-          <input id="depth" type="range" min="6" max="18" value="12" />
-          <span id="depthValue">12</span>
-        </div>
-        <div id="engineStatus" class="engine-status">Loading Stockfish…</div>
-      </div>
-    </section>
+  <!-- Main layout -->
+  <div class="layout">
 
-    <section class="commentary-area">
-      <h2>Move-by-move commentary</h2>
-      <ol id="moves"></ol>
-    </section>
-  </main>
+    <!-- Left: board + controls -->
+    <div class="board-col">
+      <div class="board-wrapper">
+        <div id="board"></div>
+      </div>
+
+      <div class="info-bar">
+        <div class="turn-indicator" id="turnIndicator">
+          <div class="turn-dot white"></div>
+          <span id="turnLabel">White to move</span>
+        </div>
+        <div class="game-status" id="gameStatus"></div>
+      </div>
+
+      <div class="controls">
+        <button class="btn" id="undoBtn" title="Undo last move">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 14 4 9 9 4"/><path d="M20 20v-7a4 4 0 0 0-4-4H4"/></svg>
+          Undo
+        </button>
+        <button class="btn" id="flipBtn" title="Flip board">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Flip
+        </button>
+        <button class="btn btn-ghost" id="resetBtn" title="New game">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          New game
+        </button>
+        <label class="depth-control" title="Engine search depth">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M4.93 4.93a10 10 0 0 0 0 14.14"/></svg>
+          <input type="range" id="depthSlider" min="6" max="18" value="12" />
+          <span id="depthVal">12</span>
+        </label>
+      </div>
+    </div>
+
+    <!-- Right: commentary feed -->
+    <div class="feed-col">
+      <div class="feed-header">
+        <h2>Analysis</h2>
+        <div class="move-count" id="moveCount">0 moves</div>
+      </div>
+      <div class="feed" id="feed">
+        <div class="feed-empty" id="feedEmpty">
+          <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M12 2a7 7 0 0 1 7 7c0 3-1.5 5.5-4 7v2H9v-2c-2.5-1.5-4-4-4-7a7 7 0 0 1 7-7z"/><path d="M9 21h6"/></svg>
+          <p>Make your first move.<br/>Stockfish will coach you after each one.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
 
   <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
   <script src="https://unpkg.com/@chrisoakman/chessboardjs@1.0.0/dist/chessboard-1.0.0.min.js"></script>
